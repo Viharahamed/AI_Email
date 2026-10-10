@@ -1,0 +1,76 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    font-family: 'Plus Jakarta Sans', sans-serif;
+    background-color: #F3F4F8;
+    color: #1E293B;
+  }
+
+  /* Accessible focus rings */
+  *:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 2px #38BDF8;
+  }
+}
+
+/* Light Theme Scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: #F1F5F9;
+}
+::-webkit-scrollbar-thumb {
+  background: #CBD5E1;
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #94A3B8;
+}
+
+/* Design Tokens & Reusable Light Theme Utilities */
+.light-panel {
+  background-color: #FFFFFF;
+  border: 1px solid #E2E8F0;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.03);
+}
+
+.light-card {
+  background-color: #FFFFFF;
+  border: 1px solid #F1F5F9;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+}
+
+.light-card:hover {
+  border-color: #E2E8F0;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.06);
+}
+
+/* Primary Coral Glow */
+.coral-btn {
+  background: linear-gradient(135deg, #FF5252 0%, #FF6B6B 100%);
+  box-shadow: 0 4px 14px rgba(255, 82, 82, 0.28);
+}
+
+.coral-btn:hover {
+  background: linear-gradient(135deg, #E04343 0%, #F05555 100%);
+  box-shadow: 0 6px 18px rgba(255, 82, 82, 0.38);
+}
+
+/* AI Glow Pulse for Light Theme */
+@keyframes aiGlowLight {
+  0%, 100% {
+    box-shadow: 0 0 12px rgba(99, 102, 241, 0.2);
+  }
+  50% {
+    box-shadow: 0 0 20px rgba(168, 85, 247, 0.35);
+  }
+}
+
+.ai-glow-box {
+  animation: aiGlowLight 4s infinite ease-in-out;
+}
