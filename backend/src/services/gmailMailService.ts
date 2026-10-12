@@ -174,7 +174,8 @@ export class GmailMailService implements IMailService {
     const sender = this.parseContact(fromRaw);
     const recipient = this.parseContact(toRaw);
 
-    const body = this.extractBody(msg.payload);
+    const { textBody, htmlBody } = this.extractBodies(msg.payload);
+    const body = textBody || (htmlBody ? GmailMailService.htmlToPlainText(htmlBody) : (msg.snippet || ''));
     const labelIds = msg.labelIds || [];
     const isUnread = labelIds.includes('UNREAD');
     const isSent = labelIds.includes('SENT');
@@ -187,6 +188,7 @@ export class GmailMailService implements IMailService {
       subject,
       snippet: msg.snippet || body.substring(0, 100),
       body,
+      htmlBody: htmlBody || undefined,
       date: dateStr ? new Date(dateStr).toISOString() : new Date().toISOString(),
       isRead: !isUnread,
       folder: isSent ? 'sent' : 'inbox',
@@ -204,31 +206,91 @@ export class GmailMailService implements IMailService {
     return { name: raw, email: raw };
   }
 
-  private extractBody(payload?: gmail_v1.Schema$MessagePart): string {
-    if (!payload) return '';
+  private decodeBase64Url(data: string): string {
+    if (!data) return '';
+    try {
+      return Buffer.from(data, 'base64url').toString('utf-8');
+    } catch {
+      const normalized = data.replace(/-/g, '+').replace(/_/g, '/');
+      return Buffer.from(normalized, 'base64').toString('utf-8');
+    }
+  }
+
+  private extractBodies(payload?: gmail_v1.Schema$MessagePart): { textBody: string; htmlBody: string } {
+    let textBody = '';
+    let htmlBody = '';
+
+    if (!payload) return { textBody, htmlBody };
+
+    const walk = (part: gmail_v1.Schema$MessagePart) => {
+      // Ignore attachment parts
+      const disposition = part.headers?.find(h => h.name?.toLowerCase() === 'content-disposition')?.value || '';
+      if (
+        disposition.toLowerCase().includes('attachment') ||
+        (part.filename && part.filename.length > 0 && part.mimeType !== 'text/plain' && part.mimeType !== 'text/html')
+      ) {
+        return;
+      }
+
+      if (part.mimeType === 'text/plain' && part.body?.data && !textBody) {
+        textBody = this.decodeBase64Url(part.body.data);
+      } else if (part.mimeType === 'text/html' && part.body?.data && !htmlBody) {
+        htmlBody = this.decodeBase64Url(part.body.data);
+      }
+
+      if (part.parts && part.parts.length > 0) {
+        for (const child of part.parts) {
+          walk(child);
+        }
+      }
+    };
 
     if (payload.body?.data) {
-      return Buffer.from(payload.body.data, 'base64').toString('utf-8');
+      if (payload.mimeType === 'text/html') {
+        htmlBody = this.decodeBase64Url(payload.body.data);
+      } else if (payload.mimeType === 'text/plain' || !payload.mimeType) {
+        textBody = this.decodeBase64Url(payload.body.data);
+      }
     }
 
     if (payload.parts && payload.parts.length > 0) {
-      const plainPart = payload.parts.find(p => p.mimeType === 'text/plain');
-      if (plainPart && plainPart.body?.data) {
-        return Buffer.from(plainPart.body.data, 'base64').toString('utf-8');
-      }
-
-      const htmlPart = payload.parts.find(p => p.mimeType === 'text/html');
-      if (htmlPart && htmlPart.body?.data) {
-        const rawHtml = Buffer.from(htmlPart.body.data, 'base64').toString('utf-8');
-        return rawHtml.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
-      }
-
       for (const part of payload.parts) {
-        const subBody = this.extractBody(part);
-        if (subBody) return subBody;
+        walk(part);
       }
     }
 
-    return '';
+    return { textBody, htmlBody };
+  }
+
+  public static htmlToPlainText(html: string): string {
+    if (!html) return '';
+    return html
+      .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
+      .replace(/<style\b[^<]*(?:(?!<\/style>)<[^<]*)*<\/style>/gi, '')
+      .replace(/<head\b[^<]*(?:(?!<\/head>)<[^<]*)*<\/head>/gi, '')
+      .replace(/<!--[\s\S]*?-->/g, '')
+      .replace(/<br\s*\/?>/gi, '\n')
+      .replace(/<\/p>/gi, '\n\n')
+      .replace(/<\/div>/gi, '\n')
+      .replace(/<\/h[1-6]>/gi, '\n\n')
+      .replace(/<li[^>]*>/gi, '\n• ')
+      .replace(/<\/li>/gi, '\n')
+      .replace(/<\/tr>/gi, '\n')
+      .replace(/<\/td>/gi, ' ')
+      .replace(/<hr\s*\/?>/gi, '\n---\n')
+      .replace(/<[^>]+>/g, '')
+      .replace(/&nbsp;/gi, ' ')
+      .replace(/&amp;/gi, '&')
+      .replace(/&lt;/gi, '<')
+      .replace(/&gt;/gi, '>')
+      .replace(/&quot;/gi, '"')
+      .replace(/&#39;|&apos;/gi, "'")
+      .replace(/&mdash;/gi, '—')
+      .replace(/&ndash;/gi, '–')
+      .replace(/&#(\d+);/g, (_, n) => String.fromCharCode(Number(n)))
+      .replace(/&#x([0-9a-fA-F]+);/g, (_, h) => String.fromCharCode(parseInt(h, 16)))
+      .replace(/[ \t]+/g, ' ')
+      .replace(/\n\s*\n\s*\n+/g, '\n\n')
+      .trim();
   }
 }

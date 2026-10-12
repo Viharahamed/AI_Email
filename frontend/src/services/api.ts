@@ -87,6 +87,10 @@ export async function processAiPromptApi(prompt: string, context: any) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ prompt, context })
   });
+  if (!res.ok) {
+    const errorText = await res.text().catch(() => '');
+    throw new Error(errorText || `Server returned status ${res.status}`);
+  }
   const json = await res.json();
   if (!json.success) throw new Error(json.message || 'AI request failed');
   return json;

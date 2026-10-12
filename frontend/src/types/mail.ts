@@ -12,6 +12,7 @@ export interface Email {
   subject: string;
   snippet: string;
   body: string;
+  htmlBody?: string;
   date: string;
   isRead: boolean;
   folder: 'inbox' | 'sent' | 'trash' | 'drafts';

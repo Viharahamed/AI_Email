@@ -60,6 +60,53 @@ export const EmailDetailView: React.FC = () => {
 
   const avatarLetter = currentEmail.sender.name ? currentEmail.sender.name.charAt(0).toUpperCase() : '?';
 
+  const htmlContent = currentEmail.htmlBody || (
+    /<!DOCTYPE|<html|<body|<div|<p>|<table|<br\s*\/?>/i.test(currentEmail.body) 
+      ? currentEmail.body 
+      : ''
+  );
+  const isHtml = Boolean(htmlContent && htmlContent.trim());
+
+  const getSanitizedHtmlDoc = (raw: string): string => {
+    // Defense-in-depth sanitization: remove scripts, objects, embeds, active handlers
+    const clean = raw
+      .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
+      .replace(/<object\b[^<]*(?:(?!<\/object>)<[^<]*)*<\/object>/gi, '')
+      .replace(/<embed\b[^<]*(?:(?!<\/embed>)<[^<]*)*<\/embed>/gi, '')
+      .replace(/<applet\b[^<]*(?:(?!<\/applet>)<[^<]*)*<\/applet>/gi, '')
+      .replace(/\s+on[a-z]+\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/gi, '')
+      .replace(/href\s*=\s*["']?javascript:[^"'>]*["']?/gi, 'href="#"')
+      .replace(/src\s*=\s*["']?javascript:[^"'>]*["']?/gi, '');
+
+    return `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data: https: http:; style-src 'unsafe-inline' https: http:; font-src data: https:; frame-src 'none'; script-src 'none';">
+  <base target="_blank">
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      font-size: 14px;
+      line-height: 1.6;
+      color: #1e293b;
+      margin: 16px;
+      padding: 0;
+      background-color: #ffffff;
+      word-break: break-word;
+    }
+    img { max-width: 100%; height: auto; }
+    table { max-width: 100%; }
+    a { color: #0284c7; text-decoration: underline; }
+  </style>
+</head>
+<body>
+  ${clean}
+</body>
+</html>`;
+  };
+
   return (
     <div className="flex-1 flex flex-col h-full bg-white overflow-hidden text-slate-800">
       {/* Top Toolbar (Inspired by Reference Screenshot) */}
@@ -144,10 +191,21 @@ export const EmailDetailView: React.FC = () => {
           </p>
         </div>
 
-        {/* Full Email Body Text Container */}
-        <div className="bg-slate-50/70 rounded-2xl p-6 border border-slate-200/80 text-slate-800 text-sm leading-relaxed whitespace-pre-wrap font-sans min-h-[200px]">
-          {currentEmail.body}
-        </div>
+        {/* Full Email Body Container */}
+        {isHtml ? (
+          <div className="w-full rounded-2xl border border-slate-200/80 bg-white overflow-hidden shadow-sm">
+            <iframe
+              title="Email Content"
+              sandbox="allow-popups allow-popups-to-escape-sandbox"
+              srcDoc={getSanitizedHtmlDoc(htmlContent)}
+              className="w-full min-h-[450px] h-[65vh] border-0 bg-white"
+            />
+          </div>
+        ) : (
+          <div className="bg-slate-50/70 rounded-2xl p-6 border border-slate-200/80 text-slate-800 text-sm leading-relaxed whitespace-pre-wrap font-sans min-h-[200px]">
+            {currentEmail.body}
+          </div>
+        )}
 
         {/* Quick Reply Dock Bar (Matching Reference Screenshot Style) */}
         <div className="pt-4 border-t border-slate-100">

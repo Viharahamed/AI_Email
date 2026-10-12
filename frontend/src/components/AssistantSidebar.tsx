@@ -4,6 +4,41 @@ import { Sparkles, Bot, Eye, Send, ArrowRight, Zap, X } from 'lucide-react';
 import { processAiPromptApi } from '../services/api';
 import { ChatMessage, AIActionPayload } from '../types/ai';
 
+const stripHtmlToText = (text: string): string => {
+  if (!text) return '';
+  if (/<[a-z][\s\S]*>/i.test(text) || text.includes('<!DOCTYPE') || text.includes('&nbsp;') || text.includes('&amp;')) {
+    return text
+      .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
+      .replace(/<style\b[^<]*(?:(?!<\/style>)<[^<]*)*<\/style>/gi, '')
+      .replace(/<head\b[^<]*(?:(?!<\/head>)<[^<]*)*<\/head>/gi, '')
+      .replace(/<!--[\s\S]*?-->/g, '')
+      .replace(/<br\s*\/?>/gi, '\n')
+      .replace(/<\/p>/gi, '\n\n')
+      .replace(/<\/div>/gi, '\n')
+      .replace(/<\/h[1-6]>/gi, '\n\n')
+      .replace(/<li[^>]*>/gi, '\n• ')
+      .replace(/<\/li>/gi, '\n')
+      .replace(/<\/tr>/gi, '\n')
+      .replace(/<\/td>/gi, ' ')
+      .replace(/<hr\s*\/?>/gi, '\n---\n')
+      .replace(/<[^>]+>/g, '')
+      .replace(/&nbsp;/gi, ' ')
+      .replace(/&amp;/gi, '&')
+      .replace(/&lt;/gi, '<')
+      .replace(/&gt;/gi, '>')
+      .replace(/&quot;/gi, '"')
+      .replace(/&#39;|&apos;/gi, "'")
+      .replace(/&mdash;/gi, '—')
+      .replace(/&ndash;/gi, '–')
+      .replace(/&#(\d+);/g, (_, n) => String.fromCharCode(Number(n)))
+      .replace(/&#x([0-9a-fA-F]+);/g, (_, h) => String.fromCharCode(parseInt(h, 16)))
+      .replace(/[ \t]+/g, ' ')
+      .replace(/\n\s*\n\s*\n+/g, '\n\n')
+      .trim();
+  }
+  return text;
+};
+
 export const AssistantSidebar: React.FC = () => {
   const {
     isAssistantOpen,
@@ -130,6 +165,37 @@ export const AssistantSidebar: React.FC = () => {
         return 'No matching email found to open';
       }
 
+      case 'draft_email': {
+        const draft = action.draft;
+        openCompose({
+          to: draft?.to || '',
+          subject: draft?.subject || '',
+          body: draft?.body || '',
+          mode: 'new'
+        });
+        return draft?.to 
+          ? `Created draft to ${draft.to}` 
+          : 'Created draft in compose window';
+      }
+
+      case 'reply_email': {
+        const draft = action.draft;
+        const targetTo = draft?.to || currentEmail?.sender.email || '';
+        const targetSubject = draft?.subject || (currentEmail ? (currentEmail.subject.startsWith('Re:') ? currentEmail.subject : `Re: ${currentEmail.subject}`) : 'Re: Conversation');
+        const targetBody = draft?.body || '';
+
+        openCompose({
+          to: targetTo,
+          subject: targetSubject,
+          body: targetBody,
+          mode: 'reply',
+          replyToEmailId: draft?.replyToEmailId || currentEmail?.id
+        });
+        return targetTo 
+          ? `Prepared reply to ${targetTo}` 
+          : 'Prepared reply draft in compose window';
+      }
+
       case 'none':
       default:
         return '';
@@ -139,18 +205,6 @@ export const AssistantSidebar: React.FC = () => {
   const handleSendPrompt = async (promptToSend?: string) => {
     const textToSubmit = promptToSend || inputPrompt;
     if (!textToSubmit.trim() || isProcessing) return;
-
-    const textLower = textToSubmit.toLowerCase();
-    if (textLower.startsWith('compose') || textLower.startsWith('draft') || textLower.includes('send email to')) {
-      const emailMatch = textToSubmit.match(/([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/);
-      const recipient = emailMatch ? emailMatch[1] : '';
-      openCompose({
-        to: recipient,
-        subject: 'Draft via Aura AI',
-        body: `Hi,\n\n${textToSubmit}\n\nBest regards,`,
-        mode: 'new'
-      });
-    }
 
     const userMsgId = Date.now().toString();
     const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
@@ -167,9 +221,23 @@ export const AssistantSidebar: React.FC = () => {
     setIsProcessing(true);
 
     try {
+      const activeEmail = currentEmail || (selectedEmailId ? emails.find(e => e.id === selectedEmailId) : null);
+      const rawBody = activeEmail?.body ? activeEmail.body.substring(0, 8000) : (activeEmail?.snippet || '');
+      const cleanBody = stripHtmlToText(rawBody);
+
       const contextData = {
         currentView,
-        selectedEmailId,
+        selectedEmailId: activeEmail?.id || selectedEmailId,
+        selectedEmail: activeEmail ? {
+          id: activeEmail.id,
+          sender: activeEmail.sender,
+          recipient: activeEmail.recipient,
+          subject: activeEmail.subject,
+          date: activeEmail.date,
+          snippet: activeEmail.snippet,
+          body: cleanBody,
+          isTruncated: activeEmail.body ? activeEmail.body.length > 8000 : false
+        } : null,
         filters,
         searchQuery
       };
@@ -213,10 +281,13 @@ export const AssistantSidebar: React.FC = () => {
   };
 
   const suggestedPrompts = [
+    'Summarize this email',
+    'What is the main request?',
+    'List the action items',
+    'Draft an email to test@example.com about project deadline',
+    'Reply to this email saying I accept the meeting invitation',
     'Show unread emails from Sarah',
     'Find emails from last 10 days',
-    'Open the latest email',
-    'Draft an email to john@example.com',
     'Clear all filters'
   ];
 
