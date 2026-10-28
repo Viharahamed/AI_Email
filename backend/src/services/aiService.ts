@@ -3,7 +3,7 @@ import { DateRangePreset } from '../types/mail';
 
 export class AIService {
   private getApiKey(): string | undefined {
-    return process.env.GEMINI_API_KEY || this.apiKey;
+    return process.env.GEMINI_API_KEY;
   }
 
   public async processPrompt(req: AIProcessRequest): Promise<AIProcessResponse> {
